@@ -46,7 +46,7 @@ async function generateBudget({ income, location, rentStatus, expenses }) {
     const response = await axios.post(
       'https://api.groq.com/openai/v1/chat/completions',
       {
-        model: 'mixtral-8x7b-32768',
+        model: 'mixtral-8x7b',
         messages: [
           { role: 'system', content: 'You are a helpful financial assistant that creates personalized Nigerian budgets.' },
           { role: 'user', content: prompt }
