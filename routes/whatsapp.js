@@ -5,6 +5,15 @@ const generateBudget = require('../utils/generateBudget');
 
 const router = express.Router();
 
+
+console.log("🚨 Reached fallback zone");
+const twiml = new MessagingResponse();
+twiml.message("🛠️ Test reply from Budget Buddy. If you're seeing this, we're alive!");
+res.writeHead(200, { 'Content-Type': 'text/xml' });
+res.end(twiml.toString());
+return;
+
+
 router.post('/', async (req, res) => {
   const from = req.body.From;
   const rawMessage = req.body.Body.trim();
