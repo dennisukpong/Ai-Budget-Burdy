@@ -7,12 +7,13 @@ const router = express.Router();
 
 router.post('/', async (req, res) => {
   const from = req.body.From;
-  const message = req.body.Body.trim().toLowerCase();
+  const rawMessage = req.body.Body.trim();
+  const message = rawMessage.toLowerCase();
   const twiml = new MessagingResponse();
 
   console.log(`📩 Message from ${from}: "${message}"`);
 
-  // Handle restart
+  // 🔄 Restart: wipe user and re-init
   if (message === 'restart') {
     await User.findOneAndDelete({ phone: from });
     twiml.message("🔄 Starting over! What’s your monthly income? (e.g., ₦70,000)");
@@ -21,8 +22,45 @@ router.post('/', async (req, res) => {
     return;
   }
 
+  // ❓ Help command
+  if (message === 'help') {
+    twiml.message(
+      `💡 *Available Commands:*\n\n` +
+      `• *restart* – Start over from the beginning\n` +
+      `• *generate* – Create your personalized budget\n` +
+      `• *summary* – View your saved answers\n` +
+      `• *help* – See this menu again\n\n` +
+      `You can reply anytime with what's next, or type 'restart' to reset.`
+    );
+    res.writeHead(200, { 'Content-Type': 'text/xml' });
+    res.end(twiml.toString());
+    return;
+  }
+
   let user = await User.findOne({ phone: from });
 
+  // 📋 Summary command
+  if (message === 'summary') {
+    if (!user) {
+      twiml.message("👋 You haven’t started yet. Type 'Hi' or 'restart' to begin.");
+    } else if (!user.income || !user.location || !user.rentStatus || !user.expenses?.length) {
+      twiml.message("📋 You're still setting up. Complete all questions first, or type 'restart' to begin again.");
+    } else {
+      twiml.message(
+        `📊 *Your Profile Summary:*\n\n` +
+        `• Income: ₦${user.income.toLocaleString()}\n` +
+        `• Location: ${user.location}\n` +
+        `• Rent: ${user.rentStatus}\n` +
+        `• Expenses: ${user.expenses.join(', ')}\n\n` +
+        `✅ You can type 'generate' for your budget or 'restart' to start fresh.`
+      );
+    }
+    res.writeHead(200, { 'Content-Type': 'text/xml' });
+    res.end(twiml.toString());
+    return;
+  }
+
+  // 👋 New user entry
   if (!user) {
     user = new User({ phone: from, state: 'awaiting_income' });
     await user.save();
@@ -30,56 +68,74 @@ router.post('/', async (req, res) => {
   } else {
     switch (user.state) {
       case 'awaiting_income':
-        user.income = parseInt(req.body.Body.replace(/[^\d]/g, '')) || 0;
+        const income = parseInt(rawMessage.replace(/[^\d]/g, ''));
+        if (!income || income < 1000) {
+          twiml.message("❗ Please enter a valid monthly income in naira. (e.g., ₦70,000)");
+          break;
+        }
+        user.income = income;
         user.state = 'awaiting_location';
         await user.save();
         twiml.message("Got it! What city or town do you live in?");
         break;
 
       case 'awaiting_location':
-        user.location = req.body.Body;
+        if (rawMessage.length < 2) {
+          twiml.message("❗ Please enter a valid city or town name.");
+          break;
+        }
+        user.location = rawMessage;
         user.state = 'awaiting_rent';
         await user.save();
         twiml.message("Do you pay rent, or live with family?");
         break;
 
       case 'awaiting_rent':
-        user.rentStatus = req.body.Body.toLowerCase().includes('family') ? 'living with parents' : 'pays rent';
+        if (!message.includes('family') && !message.includes('rent')) {
+          twiml.message("❗ Please say if you ‘pay rent’ or ‘live with family’.");
+          break;
+        }
+        user.rentStatus = message.includes('family') ? 'living with parents' : 'pays rent';
         user.state = 'awaiting_expenses';
         await user.save();
         twiml.message("What do you typically spend on? (e.g., food, transport, data)");
         break;
 
       case 'awaiting_expenses':
-        user.expenses = req.body.Body.toLowerCase().split(',').map(e => e.trim());
+        const expenses = rawMessage.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+        if (!expenses.length) {
+          twiml.message("❗ Please list at least one expense, like ‘food, transport’.");
+          break;
+        }
+        user.expenses = expenses;
         user.state = 'ready_for_budget';
         await user.save();
         twiml.message("Great! Reply ‘generate’ to see your personalized budget 📊");
         break;
 
       case 'ready_for_budget':
-        if (message.includes('generate')) {
-          try {
-            const budget = await generateBudget(user);
-            const reply = budget || "⚠️ Couldn't generate your budget right now. Please try again.";
-            twiml.message(`📊 Here’s your smart budget:\n\n${reply}`);
-            user.state = 'completed';
-            await user.save();
-          } catch (err) {
-            console.error("Budget generation error:", err.message);
-            twiml.message("⚠️ Something went wrong while generating your budget. Please try again later.");
-          }
-        } else {
-          twiml.message("Type ‘generate’ when you’re ready for your budget.");
+        if (!message.includes('generate')) {
+          twiml.message("❗ Type ‘generate’ when you're ready to get your budget.");
+          break;
+        }
+        try {
+          const budget = await generateBudget(user);
+          const reply = budget || "⚠️ Couldn't generate your budget right now. Please try again.";
+          twiml.message(`📊 Here’s your smart budget:\n\n${reply}`);
+          user.state = 'completed';
+          await user.save();
+        } catch (err) {
+          console.error("Budget generation error:", err.response?.data || err.message);
+          twiml.message("⚠️ Something went wrong while generating your budget. Please try again later.");
         }
         break;
 
       case 'completed':
-        twiml.message("You’re all set! Type ‘restart’ if you’d like to begin again.");
+        twiml.message("✅ You’re all set! Type ‘restart’ to begin again or ‘help’ to see available commands.");
         break;
 
       default:
-        twiml.message("Hmm, I’m a bit lost. Type ‘restart’ to start fresh.");
+        twiml.message("🤔 Hmm, something's not right. Type ‘restart’ to start over.");
         break;
     }
   }
