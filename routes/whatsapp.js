@@ -8,6 +8,7 @@ const router = express.Router();
 router.post('/', async (req, res) => {
   const from = req.body.From;
   const rawMessage = req.body.Body.trim();
+  console.log("📥 Raw incoming message:", req.body.Body);
   const message = rawMessage.toLowerCase();
   const twiml = new MessagingResponse();
 
@@ -18,6 +19,9 @@ router.post('/', async (req, res) => {
     await User.findOneAndDelete({ phone: from });
     twiml.message("🔄 Starting over! What’s your monthly income? (e.g., ₦70,000)");
     res.writeHead(200, { 'Content-Type': 'text/xml' });
+    if (!twiml.toString().includes("<Message>")) {
+  twiml.message("🤖 Bot received your message but didn't understand. Type 'help' to see options.");
+}
     res.end(twiml.toString());
     return;
   }
