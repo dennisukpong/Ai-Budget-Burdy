@@ -13,7 +13,7 @@ router.post('/', async (req, res) => {
 
   console.log(`📩 Message from ${from}: "${message}"`);
 
-  // 🔄 Restart: wipe user and re-init
+  // 🔄 Restart
   if (message === 'restart') {
     await User.findOneAndDelete({ phone: from });
     twiml.message("🔄 Starting over! What’s your monthly income? (e.g., ₦70,000)");
@@ -22,15 +22,14 @@ router.post('/', async (req, res) => {
     return;
   }
 
-  // ❓ Help command
+  // ❓ Help
   if (message === 'help') {
     twiml.message(
       `💡 *Available Commands:*\n\n` +
       `• *restart* – Start over from the beginning\n` +
       `• *generate* – Create your personalized budget\n` +
       `• *summary* – View your saved answers\n` +
-      `• *help* – See this menu again\n\n` +
-      `You can reply anytime with what's next, or type 'restart' to reset.`
+      `• *help* – See this menu again`
     );
     res.writeHead(200, { 'Content-Type': 'text/xml' });
     res.end(twiml.toString());
@@ -39,7 +38,7 @@ router.post('/', async (req, res) => {
 
   let user = await User.findOne({ phone: from });
 
-  // 📋 Summary command
+  // 📋 Summary
   if (message === 'summary') {
     if (!user) {
       twiml.message("👋 You haven’t started yet. Type 'Hi' or 'restart' to begin.");
@@ -47,12 +46,12 @@ router.post('/', async (req, res) => {
       twiml.message("📋 You're still setting up. Complete all questions first, or type 'restart' to begin again.");
     } else {
       twiml.message(
-        `📊 *Your Profile Summary:*\n\n` +
+        `📊 *Your Profile Summary:*\n` +
         `• Income: ₦${user.income.toLocaleString()}\n` +
         `• Location: ${user.location}\n` +
         `• Rent: ${user.rentStatus}\n` +
         `• Expenses: ${user.expenses.join(', ')}\n\n` +
-        `✅ You can type 'generate' for your budget or 'restart' to start fresh.`
+        `✅ Type 'generate' for your budget or 'restart' to start over.`
       );
     }
     res.writeHead(200, { 'Content-Type': 'text/xml' });
@@ -60,11 +59,19 @@ router.post('/', async (req, res) => {
     return;
   }
 
-  // 👋 New user entry
+  // 🆕 New user
   if (!user) {
     user = new User({ phone: from, state: 'awaiting_income' });
     await user.save();
-    twiml.message("👋 Welcome to Budget Buddy! What’s your monthly income? (e.g., ₦70,000)");
+ twiml.message(
+  `👋 Welcome to *Budget Buddy*! I’ll help you create a personalized monthly budget in under a minute.\n\n` +
+  `📌 First, what’s your monthly income? (e.g., ₦70,000)\n\n` +
+  `💡 *You can also type:*\n` +
+  `• *restart* – Start over\n` +
+  `• *summary* – View your saved details\n` +
+  `• *generate* – Build your budget\n` +
+  `• *help* – See these options again`
+);
   } else {
     switch (user.state) {
       case 'awaiting_income':
@@ -121,6 +128,7 @@ router.post('/', async (req, res) => {
         try {
           const budget = await generateBudget(user);
           const reply = budget || "⚠️ Couldn't generate your budget right now. Please try again.";
+          console.log("🤖 AI reply:", reply);
           twiml.message(`📊 Here’s your smart budget:\n\n${reply}`);
           user.state = 'completed';
           await user.save();
@@ -128,14 +136,17 @@ router.post('/', async (req, res) => {
           console.error("Budget generation error:", err.response?.data || err.message);
           twiml.message("⚠️ Something went wrong while generating your budget. Please try again later.");
         }
-        break;
+        // ✅ Always end response
+        res.writeHead(200, { 'Content-Type': 'text/xml' });
+        res.end(twiml.toString());
+        return;
 
       case 'completed':
-        twiml.message("✅ You’re all set! Type ‘restart’ to begin again or ‘help’ to see available commands.");
+        twiml.message("✅ You’re all set! Type ‘restart’ to begin again or ‘help’ to see options.");
         break;
 
       default:
-        twiml.message("🤔 Hmm, something's not right. Type ‘restart’ to start over.");
+        twiml.message("🤔 Hmm, something went wrong. Type ‘restart’ to start over.");
         break;
     }
   }

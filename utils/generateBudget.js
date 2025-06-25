@@ -28,13 +28,14 @@ async function generateBudget({ income, location, rentStatus, expenses }) {
           Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
           'Content-Type': 'application/json'
         },
-        timeout: 10000 // 10s max to keep things snappy
+        timeout: 10000
       }
     );
 
     console.timeEnd("🔁 Groq response time");
-    return response.data?.choices?.[0]?.message?.content || "⚠️ No budget returned.";
-
+    const aiReply = response.data?.choices?.[0]?.message?.content;
+    return aiReply || "⚠️ No budget returned from Groq.";
+    
   } catch (err) {
     console.error("💥 Groq error:", err.response?.data || err.message);
     return "⚠️ Budget generator timeout or connection issue. Please try again later.";
