@@ -19,9 +19,7 @@ router.post('/', async (req, res) => {
     await User.findOneAndDelete({ phone: from });
     twiml.message("🔄 Starting over! What’s your monthly income? (e.g., ₦70,000)");
     res.writeHead(200, { 'Content-Type': 'text/xml' });
-    if (!twiml.toString().includes("<Message>")) {
-  twiml.message("🤖 Bot received your message but didn't understand. Type 'help' to see options.");
-}
+ 
     res.end(twiml.toString());
     return;
   }
@@ -154,7 +152,9 @@ router.post('/', async (req, res) => {
         break;
     }
   }
-
+   if (!twiml.toString().includes("<Message>")) {
+  twiml.message("🤖 Bot received your message but didn't understand. Type 'help' to see options.");
+}
   res.writeHead(200, { 'Content-Type': 'text/xml' });
   res.end(twiml.toString());
 });
